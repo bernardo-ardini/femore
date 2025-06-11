@@ -5,7 +5,7 @@ addpath("../scr");
 
 % geometry
 
-system("gmsh square.geo");
+system("gmsh pipe.geo");
 
 geo=Geometry();
 mesh;
@@ -20,6 +20,7 @@ V=FunctionSpace(geo,"P12b");
 V.setLinesConstraint(1);
 
 Q=FunctionSpace(geo,"P1");
+Q.constrainedVertices=1;
 
 % Stokes problem
 
@@ -29,10 +30,15 @@ sp.c=0;
 
 [A,B]=sp.assemble();
 
-[u,p]=sp.solve(@(x) (x(2)>=0.99)*[1;0]);
+[u,p]=sp.solve(@(x) (2-x(2))*x(2)*((abs(x(1))<=1e-3)+(abs(x(1)-5)<=1e-3))*[1;0]);
+
+% plot
+
+speed=sqrt(u.dof(1:geo.numvertices).^2+u.dof((1:geo.numvertices)+geo.numvertices+geo.numtriangles).^2);
+
+style="None";
 
 subplot(2,2,1);
-style="-";
 title("p");
 patch("Faces",geo.triangles,"Vertices",geo.vertices,'FaceVertexCData',p.dof,'FaceColor','interp','LineStyle',style);
 pbaspect([1,1,1]);
@@ -40,13 +46,12 @@ daspect([1,1,1]);
 colorbar;
 
 subplot(2,2,2);
-title("u");
 quiver(geo.vertices(:,1),geo.vertices(:,2),u.dof(1:geo.numvertices),u.dof((1:geo.numvertices)+geo.numvertices+geo.numtriangles));
+title("u");
 pbaspect([1,1,1]);
 daspect([1,1,1]);
 
 subplot(2,2,3);
-style="-";
 title("u_1");
 patch("Faces",geo.triangles,"Vertices",geo.vertices,'FaceVertexCData',u.dof(1:geo.numvertices),'FaceColor','interp','LineStyle',style);
 pbaspect([1,1,1]);
@@ -54,7 +59,6 @@ daspect([1,1,1]);
 colorbar;
 
 subplot(2,2,4);
-style="-";
 title("u_2");
 patch("Faces",geo.triangles,"Vertices",geo.vertices,'FaceVertexCData',u.dof((1:geo.numvertices)+geo.numvertices+geo.numtriangles),'FaceColor','interp','LineStyle',style);
 pbaspect([1,1,1]);

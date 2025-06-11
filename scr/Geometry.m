@@ -36,6 +36,16 @@ classdef Geometry < handle
             edg=edg(mask)';
         end
 
+        function vert=boundaryVertices(geo)
+            vert=geo.edges2verticesList(geo.boundaryEdges());
+        end
+
+        function vert=edges2verticesList(geo,edges)
+            vert=geo.edges(edges,:);
+            vert=vert(:);
+            vert=unique(vert);
+        end
+
         function edg=lines2edges(geo,indices)
             pcv=sort(geo.lines(ismember(geo.lines(:,3),indices),1:2),2);
             edg=full(diag(geo.vertices2edges(pcv(:,1),pcv(:,2))));

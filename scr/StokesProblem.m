@@ -43,12 +43,13 @@ classdef StokesProblem < handle
 
             for e=1:geo.numtriangles
                 [valsA(:,e),valsB(:,e)]=sp.assembleLocal(e);
-                IA(:,e)=repmat([geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3);geo.numvertices+e],4,1);
-                JA(:,e)=[repmat(geo.triangles(e,1),4,1);repmat(geo.triangles(e,2),4,1);repmat(geo.triangles(e,3),4,1);repmat(geo.numvertices+e,4,1)];
-                IB(:,e)=repmat([geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3)],8,1);
+                [X,Y]=meshgrid([geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3);geo.numvertices+e],[geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3);geo.numvertices+e]);
+                IA(:,e)=Y(:);
+                JA(:,e)=X(:);
                 shift=geo.numvertices+geo.numtriangles;
-                JB(:,e)=[repmat(geo.triangles(e,1),3,1);repmat(geo.triangles(e,2),3,1);repmat(geo.triangles(e,3),3,1);repmat(geo.numvertices+e,3,1);...
-                    repmat(shift+geo.triangles(e,1),3,1);repmat(shift+geo.triangles(e,2),3,1);repmat(shift+geo.triangles(e,3),3,1);repmat(shift+geo.numvertices+e,3,1)];
+                [X,Y]=meshgrid([geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3);geo.numvertices+e;shift+geo.triangles(e,1);shift+geo.triangles(e,2);shift+geo.triangles(e,3);shift+geo.numvertices+e],[geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3)]);
+                IB(:,e)=Y(:);
+                JB(:,e)=X(:);
             end
 
             valsA=valsA(:);
@@ -60,13 +61,14 @@ classdef StokesProblem < handle
             JB=JB(:);
             
             A=sparse(IA,JA,valsA);
+            A=blkdiag(A,A);
             B=sparse(IB,JB,valsB);
         end
 
         function [u,p]=solve(sp,g)
             [A,B]=sp.assemble();
 
-            A=blkdiag(A,A);
+            B(sp.Q.constrainedVertices,:)=[];
 
             G=zeros(sp.V.numberConstrainedDof(),1);
             cc=1;
@@ -89,23 +91,21 @@ classdef StokesProblem < handle
             A=sp.V.toFreeDof(A);
             B(:,sp.V.vertex2index(sp.V.constrainedVertices))=[];
 
-            L=ichol(A,struct('michol','on'));
-            tol=1e-4;
-            maxit=1e4;
+            L=ichol(A);
 
-            b=B*pcg(A,l,tol,maxit,L,L')-m;
+            b=B*pcg(A,l,1e-7,1e4,L,L')-m;
 
             function v=R(x)
-                v=B*pcg(A,B'*x,tol,maxit,L,L');
+                v=B*pcg(A,B'*x,1e-7,1e4,L,L');
             end
 
-            P=pcg(@R,b,tol,maxit,B*B');
+            P=pcg(@R,b,1e-5,1e4,B*B');
 
             bb=l-B'*P;
-            U=pcg(A,bb,tol,maxit,L,L');
+            U=pcg(A,bb,1e-5,1e4,L,L');
 
             p=Function(sp.Q);
-            p.dof=P;
+            p.fromFreeDof(P);
 
             u=Function(sp.V);
             u.fromFreeDof(U);

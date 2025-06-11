@@ -20,6 +20,7 @@ V=FunctionSpace(geo,"P12b");
 V.setLinesConstraint(1);
 
 Q=FunctionSpace(geo,"P1");
+Q.constrainedVertices=1;
 
 % Stokes problem
 
@@ -31,8 +32,13 @@ sp.c=0;
 
 [u,p]=sp.solve(@(x) (x(2)>=0.99)*[1;0]);
 
+% plot
+
+speed=
+
+style="None";
+
 subplot(2,2,1);
-style="-";
 title("p");
 patch("Faces",geo.triangles,"Vertices",geo.vertices,'FaceVertexCData',p.dof,'FaceColor','interp','LineStyle',style);
 pbaspect([1,1,1]);
@@ -40,13 +46,12 @@ daspect([1,1,1]);
 colorbar;
 
 subplot(2,2,2);
-title("u");
 quiver(geo.vertices(:,1),geo.vertices(:,2),u.dof(1:geo.numvertices),u.dof((1:geo.numvertices)+geo.numvertices+geo.numtriangles));
+title("u");
 pbaspect([1,1,1]);
 daspect([1,1,1]);
 
 subplot(2,2,3);
-style="-";
 title("u_1");
 patch("Faces",geo.triangles,"Vertices",geo.vertices,'FaceVertexCData',u.dof(1:geo.numvertices),'FaceColor','interp','LineStyle',style);
 pbaspect([1,1,1]);
@@ -54,7 +59,6 @@ daspect([1,1,1]);
 colorbar;
 
 subplot(2,2,4);
-style="-";
 title("u_2");
 patch("Faces",geo.triangles,"Vertices",geo.vertices,'FaceVertexCData',u.dof((1:geo.numvertices)+geo.numvertices+geo.numtriangles),'FaceColor','interp','LineStyle',style);
 pbaspect([1,1,1]);
@@ -62,8 +66,9 @@ daspect([1,1,1]);
 colorbar;
 
 figure;
-[startX,startY]=meshgrid(0.5,0:0.1:1);
-[x,y]=meshgrid(geo.vertices(:,1),geo.vertices(:,2));
-[U,V]=meshgrid(u.dof(1:geo.numvertices),u.dof((1:geo.numvertices)+geo.numvertices+geo.numtriangles));
-verts=stream2(x,y,U,startX,startY);
-streamline(verts);
+[X,Y]=meshgrid(linspace(0,1,10),linspace(0,1,10));
+U=griddata(geo.vertices(:,1),geo.vertices(:,2),u.dof(1:geo.numvertices),X,Y);
+V=griddata(geo.vertices(:,1),geo.vertices(:,2),u.dof((1:geo.numvertices)+geo.numvertices+geo.numtriangles),X,Y);
+streamline(X,Y,U,V,linspace(0.5,0.5,8),linspace(0,1,8));
+pbaspect([1,1,1]);
+daspect([1,1,1]);
