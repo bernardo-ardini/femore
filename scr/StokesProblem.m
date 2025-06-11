@@ -4,24 +4,35 @@ classdef StokesProblem < handle
         Q
         mu
         c
+        delta
     end
 
     methods
         function sp=StokesProblem(V,Q)
-            assert(V.fe=="P12b");
+            assert(V.fe=="P12b" || V.fe=="P12");
             assert(Q.fe=="P1");
             assert(V.geo==Q.geo);
             sp.V=V;
             sp.Q=Q;
         end
 
-        function [localA,localB]=assembleLocal(sp,e)
+        function [localA,localB,localC]=assembleLocal(sp,e)
             geo=sp.V.geo;
-
-            referenceassembly;
-
             Finv=geo.inverseJacobian{e};
             area=geo.areas(e);
+
+            if sp.V.fe=="P12b"
+                referenceAssemblyMINI;
+
+                localC=[];
+            elseif sp.V.fe=="P12"
+                referenceAssemblyGLS;
+
+                h=max(geo.lengths(abs(geo.triangles2edges(e,:))));
+                localC=-2*area*h^2*sp.delta*tensorprod(D,Finv*Finv',[3,4],[1,2]);
+
+                localC=localC(:);
+            end
 
             localA=2*area*(sp.mu*tensorprod(D,Finv*Finv',[3,4],[1,2])+sp.c*E);
             localB=-2*area*(tensorprod(C,Finv',3,2));
@@ -30,45 +41,87 @@ classdef StokesProblem < handle
             localB=localB(:);
         end
 
-        function [A,B]=assemble(sp)
+        function [A,B,C]=assemble(sp)
             geo=sp.V.geo;
 
-            IA=zeros(4*4,geo.numtriangles);
-            JA=zeros(4*4,geo.numtriangles);
-            valsA=zeros(4*4,geo.numtriangles);
+            if sp.V.fe=="P12b"
+                IA=zeros(4*4,geo.numtriangles);
+                JA=zeros(4*4,geo.numtriangles);
+                valsA=zeros(4*4,geo.numtriangles);
+    
+                IB=zeros(4*2*3,geo.numtriangles);
+                JB=zeros(4*2*3,geo.numtriangles);
+                valsB=zeros(4*2*3,geo.numtriangles);
+            elseif sp.V.fe=="P12"
+                IA=zeros(3*3,geo.numtriangles);
+                JA=zeros(3*3,geo.numtriangles);
+                valsA=zeros(3*3,geo.numtriangles);
+    
+                IB=zeros(3*2*3,geo.numtriangles);
+                JB=zeros(3*2*3,geo.numtriangles);
+                valsB=zeros(3*2*3,geo.numtriangles);
 
-            IB=zeros(4*2*3,geo.numtriangles);
-            JB=zeros(4*2*3,geo.numtriangles);
-            valsB=zeros(4*2*3,geo.numtriangles);
+                IC=zeros(3*3,geo.numtriangles);
+                JC=zeros(3*3,geo.numtriangles);
+                valsC=zeros(3*3,geo.numtriangles);
+            end
 
-            for e=1:geo.numtriangles
-                [valsA(:,e),valsB(:,e)]=sp.assembleLocal(e);
-                [X,Y]=meshgrid([geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3);geo.numvertices+e],[geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3);geo.numvertices+e]);
-                IA(:,e)=Y(:);
-                JA(:,e)=X(:);
-                shift=geo.numvertices+geo.numtriangles;
-                [X,Y]=meshgrid([geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3);geo.numvertices+e;shift+geo.triangles(e,1);shift+geo.triangles(e,2);shift+geo.triangles(e,3);shift+geo.numvertices+e],[geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3)]);
-                IB(:,e)=Y(:);
-                JB(:,e)=X(:);
+            for e=1:geo.numtriangles                
+                if sp.V.fe=="P12b"
+                    [valsA(:,e),valsB(:,e),~]=sp.assembleLocal(e);
+
+                    [X,Y]=meshgrid([geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3);geo.numvertices+e],[geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3);geo.numvertices+e]);
+                    IA(:,e)=Y(:);
+                    JA(:,e)=X(:);
+
+                    shift=geo.numvertices+geo.numtriangles;
+                    [X,Y]=meshgrid([geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3);geo.numvertices+e;shift+geo.triangles(e,1);shift+geo.triangles(e,2);shift+geo.triangles(e,3);shift+geo.numvertices+e],[geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3)]);
+                    IB(:,e)=Y(:);
+                    JB(:,e)=X(:);
+                elseif sp.V.fe=="P12"
+                    [valsA(:,e),valsB(:,e),valsC(:,e)]=sp.assembleLocal(e);
+
+                    [X,Y]=meshgrid([geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3)],[geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3)]);
+                    IA(:,e)=Y(:);
+                    JA(:,e)=X(:);
+
+                    shift=geo.numvertices;
+                    [X,Y]=meshgrid([geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3);shift+geo.triangles(e,1);shift+geo.triangles(e,2);shift+geo.triangles(e,3)],[geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3)]);
+                    IB(:,e)=Y(:);
+                    JB(:,e)=X(:);
+
+                    [X,Y]=meshgrid([geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3)],[geo.triangles(e,1);geo.triangles(e,2);geo.triangles(e,3)]);
+                    IC(:,e)=Y(:);
+                    JC(:,e)=X(:);
+                end
             end
 
             valsA=valsA(:);
             IA=IA(:);
             JA=JA(:);
+            A=sparse(IA,JA,valsA);
+            A=blkdiag(A,A);
 
             valsB=valsB(:);
             IB=IB(:);
             JB=JB(:);
-            
-            A=sparse(IA,JA,valsA);
-            A=blkdiag(A,A);
             B=sparse(IB,JB,valsB);
+            B(sp.Q.constrainedVertices,:)=[];
+
+            if sp.V.fe=="P12b"
+                C=sparse(geo.numvertices-1,geo.numvertices-1);
+            elseif sp.V.fe=="P12"
+                valsC=valsC(:);
+                IC=IC(:);
+                JC=JC(:);
+                C=sparse(IC,JC,valsC);
+                C(sp.Q.constrainedVertices,:)=[];
+                C(:,sp.Q.constrainedVertices)=[];
+            end
         end
 
         function [u,p]=solve(sp,g)
-            [A,B]=sp.assemble();
-
-            B(sp.Q.constrainedVertices,:)=[];
+            [A,B,C]=sp.assemble();
 
             G=zeros(sp.V.numberConstrainedDof(),1);
             cc=1;
@@ -96,7 +149,7 @@ classdef StokesProblem < handle
             b=B*pcg(A,l,1e-7,1e4,L,L')-m;
 
             function v=R(x)
-                v=B*pcg(A,B'*x,1e-7,1e4,L,L');
+                v=B*pcg(A,B'*x,1e-7,1e4,L,L')-C*x;
             end
 
             P=pcg(@R,b,1e-5,1e4,B*B');

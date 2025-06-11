@@ -48,6 +48,8 @@ classdef FunctionSpace < handle
                 i=in;
             elseif V.fe=="P12"
                 i=(in(:,2)-1)*V.geo.numvertices+in(:,1);
+            elseif V.fe=="P12b"
+                i=(in(:,2)-1)*(V.geo.numvertices+V.geo.numtriangles)+in(:,1);
             end
         end
 
