@@ -60,3 +60,10 @@ patch("Faces",geo.triangles,"Vertices",geo.vertices,'FaceVertexCData',u.dof((1:g
 pbaspect([1,1,1]);
 daspect([1,1,1]);
 colorbar;
+
+figure;
+[startX,startY]=meshgrid(0.5,0:0.1:1);
+[x,y]=meshgrid(geo.vertices(:,1),geo.vertices(:,2));
+[U,V]=meshgrid(u.dof(1:geo.numvertices),u.dof((1:geo.numvertices)+geo.numvertices+geo.numtriangles));
+verts=stream2(x,y,U,startX,startY);
+streamline(verts);

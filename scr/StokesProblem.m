@@ -1,53 +1,37 @@
 classdef StokesProblem < handle
     properties
-        functionSpace
+        V
+        Q
         mu
         c
     end
 
     methods
-        function sp=StokesProblem(V)
-            sp.functionSpace=V;
+        function sp=StokesProblem(V,Q)
+            assert(V.fe=="P12b");
+            assert(Q.fe=="P1");
+            assert(V.geo==Q.geo);
+            sp.V=V;
+            sp.Q=Q;
         end
 
         function [localA,localB]=assembleLocal(sp,e)
-            V=sp.functionSpace;
-            geo=V.geo;
+            geo=sp.V.geo;
 
-            % computation of A
-            D=[-1,-1;1,0;0,1];
-            M=1/24*[2,1,1;1,2,1;1,1,2];
-            m=[1/360;1/360;1/360;1/5040];
+            referenceassembly;
 
-            localA=sp.mu*geo.areas(e)*D*geo.metricTensor{e}*D'+sp.mu*2*geo.areas(e)*M;
-            a=sp.mu*2*geo.areas(e)*m;
-            localA=[localA,a(1:3);a(1:3)',a(4)];
+            Finv=geo.inverseJacobian{e};
+            area=geo.areas(e);
+
+            localA=2*area*(sp.mu*tensorprod(D,Finv*Finv',[3,4],[1,2])+sp.c*E);
+            localB=-2*area*(tensorprod(C,Finv',3,2));
 
             localA=localA(:);
-
-            % computation of B
-            L=zeros(3,4,2);
-            L(1,1,:)=[-1/6,-1/6];
-            L(1,2,:)=[1/6,0];
-            L(1,3,:)=[0,1/6];
-            L(1,4,:)=[1/120,1/120];
-            L(2,1,:)=[-1/6,-1/6];
-            L(2,2,:)=[1/6,0];
-            L(2,3,:)=[0,1/6];
-            L(2,4,:)=[-1/120,0];
-            L(3,1,:)=[-1/6,-1/6];
-            L(3,2,:)=[1/6,0];
-            L(3,3,:)=[0,1/6];
-            L(3,4,:)=[0,-1/120];
-
-            localB=-2*geo.areas(e)*tensorprod(L,geo.inverseJacobian{e},3,1);
-
             localB=localB(:);
         end
 
         function [A,B]=assemble(sp)
-            V=sp.functionSpace;
-            geo=V.geo;
+            geo=sp.V.geo;
 
             IA=zeros(4*4,geo.numtriangles);
             JA=zeros(4*4,geo.numtriangles);
@@ -77,6 +61,55 @@ classdef StokesProblem < handle
             
             A=sparse(IA,JA,valsA);
             B=sparse(IB,JB,valsB);
+        end
+
+        function [u,p]=solve(sp,g)
+            [A,B]=sp.assemble();
+
+            A=blkdiag(A,A);
+
+            G=zeros(sp.V.numberConstrainedDof(),1);
+            cc=1;
+            for i=1:2
+                for a=sp.V.constrainedVertices'
+                    x=sp.V.geo.vertices(a,:)';
+                    v=g(x);
+                    G(cc)=v(i);
+                    cc=cc+1;
+                end
+            end
+
+            G=sp.V.fromConstrainedDof(G);
+
+            l=-A*G;
+            l=sp.V.toFreeDof(l);
+
+            m=-B*G;
+
+            A=sp.V.toFreeDof(A);
+            B(:,sp.V.vertex2index(sp.V.constrainedVertices))=[];
+
+            L=ichol(A,struct('michol','on'));
+            tol=1e-4;
+            maxit=1e4;
+
+            b=B*pcg(A,l,tol,maxit,L,L')-m;
+
+            function v=R(x)
+                v=B*pcg(A,B'*x,tol,maxit,L,L');
+            end
+
+            P=pcg(@R,b,tol,maxit,B*B');
+
+            bb=l-B'*P;
+            U=pcg(A,bb,tol,maxit,L,L');
+
+            p=Function(sp.Q);
+            p.dof=P;
+
+            u=Function(sp.V);
+            u.fromFreeDof(U);
+            u.dof=u.dof+G;
         end
     end
 end

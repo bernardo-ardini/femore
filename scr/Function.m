@@ -17,33 +17,11 @@ classdef Function < handle
         end
 
         function fromFreeDof(u,w)
-            V=u.functionSpace;
-            geo=V.geo;
-
-            if V.fe=="P12"
-                M=eye(2*geo.numvertices);
-                M(:,[V.constrainedVertices();geo.numvertices+V.constrainedVertices()])=[];
-            elseif V.fe=="P1"
-                M=eye(geo.numvertices);
-                M(:,V.constrainedVertices())=[];
-            end
-
-            u.dof=M*w;
+            u.dof=u.functionSpace.fromFreeDof(w);
         end
 
         function fromConstrainedDof(u,w)
-            V=u.functionSpace;
-            geo=V.geo;
-
-            if V.fe=="P12"
-                M=eye(2*geo.numvertices);
-                M=M(:,[V.constrainedVertices();geo.numvertices+V.constrainedVertices()]);
-            elseif V.fe=="P1"
-                M=eye(geo.numvertices);
-                M=M(:,V.constrainedVertices());
-            end
-
-            u.dof=M*w;
+            u.dof=u.functionSpace.fromConstrainedDof(w);
         end
 
         function computeJacobians(u)

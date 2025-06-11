@@ -22,7 +22,6 @@ classdef Geometry < handle
         d % dimensione
 
         affineTransformation
-        metricTensor
         inverseJacobian
     end
 
@@ -69,7 +68,6 @@ classdef Geometry < handle
             geo.lengths=zeros(geo.numedges,1);
             geo.centroids=zeros(geo.numtriangles,2);
             geo.affineTransformation=cell(geo.numtriangles,1);
-            geo.metricTensor=cell(geo.numtriangles,1);
             geo.inverseJacobian=cell(geo.numtriangles,1);
             
             % conteggio dei lati trovati
@@ -81,7 +79,6 @@ classdef Geometry < handle
                 F=[x(2,:)-x(1,:);x(3,:)-x(1,:)]';
                 geo.affineTransformation{e}=[F,x(1,:)'];
                 geo.inverseJacobian{e}=inv(F);
-                geo.metricTensor{e}=inv(F'*F);
 
                 % calcolo l'area dei triangoli e i baricentri
                 geo.areas(e)=0.5*abs(det(F));

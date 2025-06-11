@@ -34,12 +34,16 @@ classdef FunctionSpace < handle
             end
         end
 
+        function ndof=numberConstrainedDof(V)
+            ndof=V.numberDof()-V.numberFreeDof();
+        end
+
         function setLinesConstraint(V,lines)
             V.linesConstraints=lines;
             V.constrainedVertices=[V.constrainedVertices;V.geo.lines2vertices(lines)];
         end
 
-        function i=getIndex(V,in)
+        function i=vertexComponent2index(V,in)
             if V.fe=="P1"
                 i=in;
             elseif V.fe=="P12"
@@ -47,33 +51,37 @@ classdef FunctionSpace < handle
             end
         end
 
-        function i=getAllIndex(V,in)
+        function i=vertex2index(V,in)
             if V.fe=="P1"
                 i=in;
             elseif V.fe=="P12"
                 i=[in;V.geo.numvertices+in];
+            elseif V.fe=="P12b"
+                i=[in;V.geo.numvertices+V.geo.numtriangles+in];
             end
         end
 
         function out=toFreeDof(V,in)
             if isvector(in)
                 out=in;
-                out(V.getAllIndex(V.constrainedVertices()))=[];
+                out(V.vertex2index(V.constrainedVertices()))=[];
             elseif ismatrix(in)
                 out=in;
-                out(V.getAllIndex(V.constrainedVertices()),:)=[];
-                out(:,V.getAllIndex(V.constrainedVertices()))=[];
+                out(V.vertex2index(V.constrainedVertices()),:)=[];
+                out(:,V.vertex2index(V.constrainedVertices()))=[];
             end
         end
 
         function out=fromConstrainedDof(V,in)
-            if V.fe=="P12"
-                M=eye(2*V.geo.numvertices);
-                M=M(:,[V.constrainedVertices();V.geo.numvertices+V.constrainedVertices()]);
-            elseif V.fe=="P1"
-                M=eye(V.geo.numvertices);
-                M=M(:,V.constrainedVertices());
-            end
+            M=speye(V.numberDof());
+            M=M(:,V.vertex2index(V.constrainedVertices()));
+
+            out=M*in;
+        end
+
+        function out=fromFreeDof(V,in)
+            M=speye(V.numberDof());
+            M(:,V.vertex2index(V.constrainedVertices()))=[];
 
             out=M*in;
         end
