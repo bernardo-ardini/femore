@@ -12,6 +12,25 @@ classdef Function < handle
             u.dof=zeros(V.numberDof(),1);
         end
 
+        function fromFunctionHandle(u,f)
+            if u.functionSpace.fe=="P1"
+                u.dof=f(u.functionSpace.geo.vertices')';
+            elseif u.functionSpace.fe=="P12"
+                u1=f(u.functionSpace.geo.vertices');
+                u2=u1(2,:);
+                u1(2,:)=[];
+                u.dof=[u1';u2'];
+            elseif u.functionSpace.fe=="P12b"
+                u1=f(u.functionSpace.geo.vertices');
+                u2=u1(2,:);
+                u1(2,:)=[];
+                ub1=f(u.functionSpace.geo.centroids')-1/3*[sum(u1(u.functionSpace.geo.triangles),2)';sum(u2(u.functionSpace.geo.triangles),2)'];
+                ub2=ub1(2,:);
+                ub1(2,:)=[];
+                u.dof=[u1';ub1';u2';ub2'];
+            end
+        end
+
         function w=toFreeDof(u)
             w=u.functionSpace.toFreeDof(u.dof);
         end
@@ -22,6 +41,11 @@ classdef Function < handle
 
         function fromConstrainedDof(u,w)
             u.dof=u.functionSpace.fromConstrainedDof(w);
+        end
+
+        function norm=normL2(u)
+            M=u.functionSpace.massMatrix;
+            norm=sqrt(u.dof'*M*u.dof);
         end
 
         function computeJacobians(u)

@@ -5,6 +5,7 @@ classdef FunctionSpace < handle
         linesConstraints
         fe
         B
+        massMatrix
     end
 
     methods
@@ -94,6 +95,56 @@ classdef FunctionSpace < handle
                 for e=1:V.geo.numtriangles
                     V.B{e}=inv([V.geo.vertices(V.geo.triangles(e,:),:)';ones(1,V.geo.d+1)]);
                 end
+            end
+        end
+
+        function assembleMassMatrix(V)
+            if V.fe=="P1"
+                I=zeros(9,V.geo.numtriangles);
+                J=zeros(9,V.geo.numtriangles);
+                vals=zeros(9,V.geo.numtriangles);
+
+                referenceAssemblyP12;
+
+                for e=1:V.geo.numtriangles
+                    local=2*V.geo.areas(e)*E;
+                    vals(:,e)=local(:);
+                    [X,Y]=meshgrid([V.geo.triangles(e,1),V.geo.triangles(e,2),V.geo.triangles(e,3)],[V.geo.triangles(e,1),V.geo.triangles(e,2),V.geo.triangles(e,3)]);
+                    I(:,e)=Y(:);
+                    J(:,e)=X(:);
+                end
+
+                vals=vals(:);
+                I=I(:);
+                J=J(:);
+
+                V.massMatrix=sparse(I,J,vals);
+            elseif V.fe=="P12"
+                V.fe="P1";
+                V.assembleMassMatrix();
+                V.fe="P12";
+                V.massMatrix=blkdiag(V.massMatrix,V.massMatrix);
+            elseif V.fe=="P12b"
+                I=zeros(16,V.geo.numtriangles);
+                J=zeros(16,V.geo.numtriangles);
+                vals=zeros(16,V.geo.numtriangles);
+
+                referenceAssemblyP12b;
+
+                for e=1:V.geo.numtriangles
+                    local=2*V.geo.areas(e)*E;
+                    vals(:,e)=local(:);
+                    [X,Y]=meshgrid([V.geo.triangles(e,1);V.geo.triangles(e,2);V.geo.triangles(e,3);V.geo.numvertices+e],[V.geo.triangles(e,1);V.geo.triangles(e,2);V.geo.triangles(e,3);V.geo.numvertices+e]);
+                    I(:,e)=Y(:);
+                    J(:,e)=X(:);
+                end
+
+                vals=vals(:);
+                I=I(:);
+                J=J(:);
+
+                V.massMatrix=sparse(I,J,vals);
+                V.massMatrix=blkdiag(V.massMatrix,V.massMatrix);
             end
         end
     end

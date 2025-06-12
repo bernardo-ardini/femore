@@ -22,11 +22,11 @@ classdef StokesProblem < handle
             area=geo.areas(e);
 
             if sp.V.fe=="P12b"
-                referenceAssemblyMINI;
+                referenceAssemblyP12b;
 
                 localC=[];
             elseif sp.V.fe=="P12"
-                referenceAssemblyGLS;
+                referenceAssemblyP12;
 
                 h=max(geo.lengths(abs(geo.triangles2edges(e,:))));
                 localC=-2*area*h^2*sp.delta*tensorprod(D,Finv*Finv',[3,4],[1,2]);
@@ -120,42 +120,94 @@ classdef StokesProblem < handle
             end
         end
 
-        function [u,p]=solve(sp,g)
-            [A,B,C]=sp.assemble();
+        function [l,m]=assemblerhs(sp,f,r,varargin)
+            geo=sp.V.geo;
 
-            G=zeros(sp.V.numberConstrainedDof(),1);
-            cc=1;
-            for i=1:2
-                for a=sp.V.constrainedVertices'
-                    x=sp.V.geo.vertices(a,:)';
-                    v=g(x);
-                    G(cc)=v(i);
-                    cc=cc+1;
+            p=inputParser;
+            addParameter(p,"mode","interpolation");
+            parse(p,varargin{:})
+
+            if p.Results.mode=="interpolation"
+                F=Function(sp.V);
+                F.fromFunctionHandle(f);
+                l=sp.V.massMatrix*F.dof;
+
+                R=Function(sp.Q);
+                R.fromFunctionHandle(r);
+                m=-sp.Q.massMatrix*R.dof;
+            elseif p.Results.mode=="gauss"
+                gaussquad=GaussQuad(2);
+    
+                if sp.V.fe=="P12b"
+                    IV=zeros(4*2,geo.numtriangles);
+                    valsV=zeros(4*2,geo.numtriangles);
+                elseif sp.V.fe=="P12"
+                    IV=zeros(3*2,geo.numtriangles);
+                    valsV=zeros(3*2,geo.numtriangles);
                 end
+    
+                IQ=zeros(3,geo.numtriangles);
+                valsQ=zeros(3,geo.numtriangles);
+    
+                for e=1:geo.numtriangles
+                    affineTransformation=geo.affineTransformation{e};
+                    F=affineTransformation(:,1:2);
+                    t=affineTransformation(:,3);
+                    if sp.V.fe=="P12b"
+                        int=@(x) [f(F*x+t).*(1-x(1,:)-x(2,:));f(F*x+t).*x(1,:);f(F*x+t).*x(2,:);f(F*x+t).*(27*(1-x(1,:)-x(2,:)).*x(1,:).*x(2,:))];
+                        valsV(:,e)=2*geo.areas(e)*gaussquad.integral(int);
+                        shift=geo.numvertices+geo.numtriangles;
+                        IV(:,e)=[geo.triangles(e,1),geo.triangles(e,1)+shift,geo.triangles(e,2),geo.triangles(e,2)+shift,geo.triangles(e,3),geo.triangles(e,3)+shift,geo.numvertices+e,shift+geo.numvertices+e];
+                    elseif sp.V.fe=="P12"
+                        int=@(x) [f(F*x+t).*(1-x(1,:)-x(2,:));f(F*x+t).*x(1,:);f(F*x+t).*x(2,:)];
+                        valsV(:,e)=2*geo.areas(e)*gaussquad.integral(int);
+                        shift=geo.numvertices;
+                        IV(:,e)=[geo.triangles(e,1),geo.triangles(e,1)+shift,geo.triangles(e,2),geo.triangles(e,2)+shift,geo.triangles(e,3),geo.triangles(e,3)+shift];
+                    end
+                    int=@(x) [r(F*x+t).*(1-x(1,:)-x(2,:));r(F*x+t).*x(1,:);r(F*x+t).*x(2,:)];
+                    valsQ(:,e)=-2*geo.areas(e)*gaussquad.integral(int);
+                    IQ(:,e)=[geo.triangles(e,1),geo.triangles(e,2),geo.triangles(e,3)];
+                end
+    
+                valsV=valsV(:);
+                IV=IV(:);
+                l=accumarray(IV,valsV);
+    
+                valsQ=valsQ(:);
+                IQ=IQ(:);
+                m=accumarray(IQ,valsQ);
             end
+        end
 
+        function [u,p]=solve(sp,g,f,r)
+            [A,B,C]=sp.assemble();
+     
+            G=g(sp.V.geo.vertices(sp.V.constrainedVertices,:)');
+            G=[G(1,:)';G(2,:)'];
             G=sp.V.fromConstrainedDof(G);
 
-            l=-A*G;
+            [l,m]=sp.assemblerhs(f,r);
+            l=l-A*G;
             l=sp.V.toFreeDof(l);
 
-            m=-B*G;
+            m=sp.Q.toFreeDof(m);
+            m=m-B*G;
 
             A=sp.V.toFreeDof(A);
             B(:,sp.V.vertex2index(sp.V.constrainedVertices))=[];
 
             L=ichol(A);
 
-            b=B*pcg(A,l,1e-7,1e4,L,L')-m;
+            b=B*pcg(A,l,1e-6,1e4,L,L')-m;
 
             function v=R(x)
-                v=B*pcg(A,B'*x,1e-7,1e4,L,L')-C*x;
+                v=B*pcg(A,B'*x,1e-9,1e4,L,L')-C*x;
             end
 
-            P=pcg(@R,b,1e-5,1e4,B*B');
+            P=pcg(@R,b,1e-6,1e4,B*B');
 
             bb=l-B'*P;
-            U=pcg(A,bb,1e-5,1e4,L,L');
+            U=pcg(A,bb,1e-6,1e4,L,L');
 
             p=Function(sp.Q);
             p.fromFreeDof(P);

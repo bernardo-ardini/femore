@@ -1,11 +1,11 @@
 clear;
 close all;
 
-addpath("../scr");
+addpath("~/femore/scr/");
 
 % geometry
 
-system("gmsh pipe.geo");
+system("gmsh pipes.geo");
 
 geo=Geometry();
 mesh;
@@ -16,7 +16,7 @@ geo.initialize();
 
 % function space
 
-V=FunctionSpace(geo,"P12");
+V=FunctionSpace(geo,"P12b");
 V.setLinesConstraint(1);
 
 Q=FunctionSpace(geo,"P1");
@@ -29,15 +29,15 @@ sp.mu=0.1;
 sp.c=0;
 sp.delta=0.1;
 
-[A,B]=sp.assemble();
-
-[u,p]=sp.solve(@(x) (2-x(2))*x(2)*((abs(x(1))<=1e-3)+(abs(x(1)-5)<=1e-3))*[1;0]);
+g=@(x) [0;-1]*((1-x(1,:)).*x(1,:).*(x(2,:)>=6-eps).*(x(1,:)<=1+eps))+[0;1]*((3-x(1,:)).*(x(1,:)-2).*(x(2,:)>=6-eps).*(x(1,:)>=2-eps));
+f=@(x) -[0;1]*ones(1,size(x,2));
+r=@(x) zeros(1,size(x,2));
+[u,p]=sp.solve(g,f,r);
 
 % plot
 
 u1=u.dof(V.vertexComponent2index([1:geo.numvertices;ones(1,geo.numvertices)]'));
 u2=u.dof(V.vertexComponent2index([1:geo.numvertices;2*ones(1,geo.numvertices)]'));
-speed=sqrt(u1.^2+u2.^2);
 
 style="None";
 
