@@ -18,9 +18,11 @@ geo.initialize();
 
 V=FunctionSpace(geo,"P12b");
 V.setLinesConstraint(1);
+V.assembleMassMatrix();
 
 Q=FunctionSpace(geo,"P1");
 Q.constrainedVertices=1;
+Q.assembleMassMatrix();
 
 % Stokes problem
 
