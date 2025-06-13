@@ -204,7 +204,7 @@ classdef StokesProblem < handle
                 v=B*pcg(A,B'*x,1e-9,1e4,L,L')-C*x;
             end
 
-            P=pcg(@R,b,1e-6,1e4,B*B');
+            P=pcg(@R,b,1e-6,1e4);
 
             bb=l-B'*P;
             U=pcg(A,bb,1e-6,1e4,L,L');
