@@ -134,7 +134,7 @@ classdef Geometry < handle
                         geo.edges2triangles(geo.vertices2edges(aa1,aa2),2)=e;
                     end
 
-                    sigma=sign(geo.normals(abs(geo.vertices2edges(a1,a2)),:)*(0.5*(geo.vertices(a1,:)+geo.vertices(a2,:))-geo.vertices(a3,:))'); % calcolo se il versore è entrante o uscente
+                    sigma=sign(geo.normals(abs(geo.vertices2edges(a1,a2)),:)*(geo.vertices(a1,:)-geo.vertices(a3,:))'); % calcolo se il versore è entrante o uscente
                     geo.triangles2edges(e,alpha)=sigma*abs(geo.vertices2edges(a1,a2)); % salvo nella matrice per trovare i lati di un elemento
                 end
             end
