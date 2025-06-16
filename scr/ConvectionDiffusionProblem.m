@@ -6,6 +6,15 @@ classdef ConvectionDiffusionProblem < handle
         delta
         xi
 
+        stabilizationParameter
+        PechletNumber
+
+        typeStabilization
+
+        theta
+        rho
+        epsilon
+
         A
     end
 
@@ -13,6 +22,7 @@ classdef ConvectionDiffusionProblem < handle
         function cdp=ConvectionDiffusionProblem(V)
             assert(V.fe=="P1");
             cdp.functionSpace=V;
+            cdp.typeStabilization="Assignment";
         end
 
         function localA=assembleLocal(cdp,e)
@@ -26,26 +36,20 @@ classdef ConvectionDiffusionProblem < handle
 
             alpha=min(eigs(cdp.diffusivity));
             Pe=h*norm(cdp.velocity)/alpha;
-            gamma=cdp.delta*cdp.xi(Pe)*h/norm(cdp.velocity);
+
+            if cdp.typeStabilization=="Assignment"
+                gamma=cdp.delta*h/alpha/norm(cdp.velocity);
+            elseif cdp.typeStabilization=="Quarteroni"
+                gamma=0.5*h/norm(cdp.velocity)*cdp.xi(0.5*Pe);
+            elseif cdp.typeStabilization=="My"
+                b=norm(cdp.velocity);
+                gamma=max([0,h/b*(1-cdp.theta)*(cdp.epsilon+cdp.theta/pi^2/cdp.epsilon-(2-cdp.rho-cdp.theta/cdp.rho)/Pe)]);
+            end
+
+            cdp.stabilizationParameter=max([gamma,cdp.stabilizationParameter]);
+            cdp.PechletNumber=max([cdp.PechletNumber,Pe]);
 
             localA=geo.areas(e)*(B*(cdp.diffusivity+gamma*cdp.velocity*cdp.velocity')*B'+1/3*ones(3,1)*cdp.velocity'*B');
-            localA=localA(:);
-        end
-
-        function localA=assembleLocalVar(cdp,e)
-            geo=cdp.functionSpace.geo;
-            Finv=geo.inverseJacobian{e};
-            area=geo.areas(e);
-
-            referenceAssemblyP12;
-
-            h=max(geo.lengths(abs(geo.triangles2edges(e,:))));
-
-            alpha=min(eigs(cdp.diffusivity));
-            Pe=h*norm(cdp.velocity)/alpha;
-            gamma=cdp.delta*cdp.xi(Pe)*h/norm(cdp.velocity);
-
-            localA=2*area*(tensorprod(D,Finv*(cdp.diffusivity+gamma*cdp.velocity*cdp.velocity')*Finv',[3,4],[1,2])+tensorprod(C,Finv*cdp.velocity,3,1));
             localA=localA(:);
         end
 
