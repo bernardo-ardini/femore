@@ -14,8 +14,6 @@ classdef ConvectionDiffusionProblem < handle
         theta
         rho
         epsilon
-
-        A
     end
 
     methods
@@ -33,6 +31,12 @@ classdef ConvectionDiffusionProblem < handle
 
             B=V.B{e};
             B=B(:,1:2);
+
+            if norm(cdp.velocity)==0
+                localA=geo.areas(e)*B*cdp.diffusivity*B';
+                localA=localA(:);
+                return;
+            end
 
             alpha=min(eigs(cdp.diffusivity));
             Pe=h*norm(cdp.velocity)/alpha;
@@ -53,7 +57,7 @@ classdef ConvectionDiffusionProblem < handle
             localA=localA(:);
         end
 
-        function assemble(cdp)
+        function A=assemble(cdp)
             V=cdp.functionSpace;
             geo=V.geo;
 
@@ -71,25 +75,30 @@ classdef ConvectionDiffusionProblem < handle
             I=I(:);
             J=J(:);
             
-            cdp.A=sparse(I,J,vals);
+            A=sparse(I,J,vals);
         end
 
-        function u=solve(cdp,dirval)
+        function u=solve(cdp,dirval,varargin)
+            p=inputParser;
+            addOptional(p,"F",0);
+            p.parse(varargin{:});
+            F=p.Results.F;
+
             % function space
             V=cdp.functionSpace;
 
             % assemble full stiffness matrix
-            cdp.assemble();
+            A=cdp.assemble();
             
             % compute all nodal values of lift function
             G=V.fromConstrainedDof(dirval);
             
             % compute rhs
-            f=-cdp.A*G;
+            f=-A*G+F;
             f=V.toFreeDof(f);
             
             % compute the stiffness matrix related to free dof only
-            AA=V.toFreeDof(cdp.A);
+            A=V.toFreeDof(A);
             
             % linear system solution
             restart=10;
@@ -97,8 +106,8 @@ classdef ConvectionDiffusionProblem < handle
             maxit=20;
             setup.type='nofill';
             setup.milu='off';
-            [L,U]=ilu(AA,setup);
-            W=gmres(AA,f,restart,tol,maxit,L,U);
+            [L,U]=ilu(A,setup);
+            W=gmres(A,f,restart,tol,maxit,L,U);
             
             % final solution
             u=Function(V);
@@ -106,12 +115,26 @@ classdef ConvectionDiffusionProblem < handle
             u.dof=u.dof+G; % add lift function
         end
 
-        function M=massFlux(cdp,u)
-            M=sum(-cdp.A*u.dof);
+        function [diffusionFlux,diffusionFluxVar,convectionFlux]=fluxes(cdp,u)
+            % assemble the diffusion stiffness matrix without artifical diffusion
+
+            b=cdp.velocity;
+            cdp.velocity=[0;0];
+            A=cdp.assemble();
+            cdp.velocity=b;
+
+            % compute flux
 
             geo=cdp.functionSpace.geo;
-
             geo.boundaryEdges();
+
+            %A=cdp.assemble();
+            A=A(geo.boundaryVertices(),:);
+            diffusionFluxVar=sum(-A*u.dof);
+            diffusionFlux=0;
+            convectionFlux=0;
+
+            % add convection flux
 
             for k=geo.boundaryEdges()'
                 e=geo.edges2triangles(k,2);
@@ -119,10 +142,16 @@ classdef ConvectionDiffusionProblem < handle
                 kk=kk(abs(geo.triangles2edges(e,:))==k);
                 nu=geo.normals(k,:)'*sign(geo.triangles2edges(e,kk));
 
-                M=M+cdp.velocity'*nu*geo.lengths(k)/2*sum(u.dof(geo.edges2verticesList(k)));
-            end
+                % hold on;
+                % m=1/2*sum(geo.vertices(geo.edges2verticesList(k),:));
+                % quiver(m(1),m(2),nu(1),nu(2),0.2);
+    
+                B=cdp.functionSpace.B{e};
+                B=B(:,1:2);
 
-            M=M+cdp.velocity'*nu*geo.lengths(k)/2*sum(u.dof(geo.edges2verticesList(k)));
+                diffusionFlux=diffusionFlux-geo.lengths(k)*nu'*cdp.diffusivity*B'*u.dof(geo.triangles(e,:));
+                convectionFlux=convectionFlux+cdp.velocity'*nu*geo.lengths(k)/2*sum(u.dof(geo.edges2verticesList(k)));
+            end
         end
     end
 end
