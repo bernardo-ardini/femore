@@ -24,21 +24,38 @@ classdef StokesProblem < handle
             if sp.V.fe=="P12b"
                 referenceAssemblyP12b;
 
+                localA=2*area*(sp.mu*tensorprod(D,Finv*Finv',[3,4],[1,2])+sp.c*E);
+                localB=-2*area*(tensorprod(C,Finv',3,2));
+
+                localA=localA(:);
+                localB=localB(:);
                 localC=[];
+            % elseif sp.V.fe=="P12"
+            %     referenceAssemblyP12;
+            % 
+            %     h=max(geo.lengths(abs(geo.triangles2edges(e,:))));
+            % 
+            %     localA=2*area*(sp.mu*tensorprod(D,Finv*Finv',[3,4],[1,2])+sp.c*E);
+            %     localB=-2*area*(tensorprod(C,Finv',3,2));
+            %     localC=-2*area*h^2*sp.delta*tensorprod(D,Finv*Finv',[3,4],[1,2]);
+            % 
+            %     localA=localA(:);
+            %     localB=localB(:);
+            %     localC=localC(:);
+            % end
             elseif sp.V.fe=="P12"
                 referenceAssemblyP12;
 
                 h=max(geo.lengths(abs(geo.triangles2edges(e,:))));
+
+                localA=2*area*(sp.mu*tensorprod(D,Finv*Finv',[3,4],[1,2])+sp.c*E-sp.delta*h^2*sp.c^2*E);
+                localB=-2*area*(tensorprod(C,Finv',3,2)+sp.delta*h^2*sp.c*permute(tensorprod(C,Finv',3,2),[2,1,3]));
                 localC=-2*area*h^2*sp.delta*tensorprod(D,Finv*Finv',[3,4],[1,2]);
 
+                localA=localA(:);
+                localB=localB(:);
                 localC=localC(:);
             end
-
-            localA=2*area*(sp.mu*tensorprod(D,Finv*Finv',[3,4],[1,2])+sp.c*E);
-            localB=-2*area*(tensorprod(C,Finv',3,2));
-
-            localA=localA(:);
-            localB=localB(:);
         end
 
         function [A,B,C]=assemble(sp)
@@ -125,7 +142,11 @@ classdef StokesProblem < handle
 
             p=inputParser;
             addParameter(p,"mode","interpolation");
-            parse(p,varargin{:})
+            parse(p,varargin{:});
+
+            if sp.V.fe=="P1"
+                assert(p.Results.mode=="gauss","If GLS stabilization is used the only quadrature mode is gauss");
+            end
 
             if p.Results.mode=="interpolation"
                 F=Function(sp.V);
@@ -136,7 +157,7 @@ classdef StokesProblem < handle
                 R.fromFunctionHandle(r);
                 m=-sp.Q.massMatrix*R.dof;
             elseif p.Results.mode=="gauss"
-                gaussquad=GaussQuad(2);
+                gaussquad=GaussQuad(5);
     
                 if sp.V.fe=="P12b"
                     IV=zeros(4*2,geo.numtriangles);
@@ -153,20 +174,29 @@ classdef StokesProblem < handle
                     affineTransformation=geo.affineTransformation{e};
                     F=affineTransformation(:,1:2);
                     t=affineTransformation(:,3);
+                    h=max(geo.lengths(abs(geo.triangles2edges(e,:))));
+                    Finv=geo.inverseJacobian{e};
+
                     if sp.V.fe=="P12b"
                         int=@(x) [f(F*x+t).*(1-x(1,:)-x(2,:));f(F*x+t).*x(1,:);f(F*x+t).*x(2,:);f(F*x+t).*(27*(1-x(1,:)-x(2,:)).*x(1,:).*x(2,:))];
                         valsV(:,e)=2*geo.areas(e)*gaussquad.integral(int);
                         shift=geo.numvertices+geo.numtriangles;
                         IV(:,e)=[geo.triangles(e,1),geo.triangles(e,1)+shift,geo.triangles(e,2),geo.triangles(e,2)+shift,geo.triangles(e,3),geo.triangles(e,3)+shift,geo.numvertices+e,shift+geo.numvertices+e];
+
+                        int=@(x) [r(F*x+t).*(1-x(1,:)-x(2,:));r(F*x+t).*x(1,:);r(F*x+t).*x(2,:)];
+                        valsQ(:,e)=-2*geo.areas(e)*gaussquad.integral(int);
+                        IQ(:,e)=[geo.triangles(e,1),geo.triangles(e,2),geo.triangles(e,3)];
                     elseif sp.V.fe=="P12"
                         int=@(x) [f(F*x+t).*(1-x(1,:)-x(2,:));f(F*x+t).*x(1,:);f(F*x+t).*x(2,:)];
-                        valsV(:,e)=2*geo.areas(e)*gaussquad.integral(int);
+                        % valsV(:,e)=2*geo.areas(e)*gaussquad.integral(int);
+                        valsV(:,e)=2*geo.areas(e)*(1-sp.delta*h^2*sp.c)*gaussquad.integral(int);
                         shift=geo.numvertices;
                         IV(:,e)=[geo.triangles(e,1),geo.triangles(e,1)+shift,geo.triangles(e,2),geo.triangles(e,2)+shift,geo.triangles(e,3),geo.triangles(e,3)+shift];
+
+                        int=@(x) [r(F*x+t).*(1-x(1,:)-x(2,:))-sp.delta*h^2*diag(f(F*x+t)'*Finv'*([-1;-1]*ones(1,size(x,2))))';r(F*x+t).*x(1,:)-sp.delta*h^2*diag(f(F*x+t)'*Finv'*([1;0]*ones(1,size(x,2))))';r(F*x+t).*x(2,:)-sp.delta*h^2*diag(f(F*x+t)'*Finv'*([0;1]*ones(1,size(x,2))))'];
+                        valsQ(:,e)=-2*geo.areas(e)*gaussquad.integral(int);
+                        IQ(:,e)=[geo.triangles(e,1),geo.triangles(e,2),geo.triangles(e,3)];
                     end
-                    int=@(x) [r(F*x+t).*(1-x(1,:)-x(2,:));r(F*x+t).*x(1,:);r(F*x+t).*x(2,:)];
-                    valsQ(:,e)=-2*geo.areas(e)*gaussquad.integral(int);
-                    IQ(:,e)=[geo.triangles(e,1),geo.triangles(e,2),geo.triangles(e,3)];
                 end
     
                 valsV=valsV(:);
@@ -179,14 +209,18 @@ classdef StokesProblem < handle
             end
         end
 
-        function [u,p]=solve(sp,g,f,r)
+        function [u,p]=solve(sp,g,f,r,varargin)
+			parser=inputParser;
+			addOptional(parser,'PressurePreconditioner','n',@isstring);
+		    parse(parser,varargin{:});
+
             [A,B,C]=sp.assemble();
      
             G=g(sp.V.geo.vertices(sp.V.constrainedVertices,:)');
             G=[G(1,:)';G(2,:)'];
             G=sp.V.fromConstrainedDof(G);
 
-            [l,m]=sp.assemblerhs(f,r);
+            [l,m]=sp.assemblerhs(f,r,"mode","gauss");
             l=l-A*G;
             l=sp.V.toFreeDof(l);
 
@@ -196,18 +230,24 @@ classdef StokesProblem < handle
             A=sp.V.toFreeDof(A);
             B(:,sp.V.vertex2index(sp.V.constrainedVertices))=[];
 
-            L=ichol(A);
+            opts.type="ict";
+            opts.droptol=1e-2;
+            L=ichol(A,opts);
 
-            b=B*pcg(A,l,1e-6,1e4,L,L')-m;
+            b=B*pcg(A,l,1e-8,500,L,L')-m;
 
             function v=R(x)
-                v=B*pcg(A,B'*x,1e-9,1e4,L,L')-C*x;
+                v=B*pcg(A,B'*x,1e-9,200,L,L')-C*x;
             end
 
-            P=pcg(@R,b,1e-6,1e4);
+			if parser.Results.PressurePreconditioner=="n"
+            	P=pcg(@R,b,1e-7,800);
+			elseif parser.Results.PressurePreconditioner=="y"
+				P=pcg(@R,b,1e-7,800,B*B');
+			end
 
             bb=l-B'*P;
-            U=pcg(A,bb,1e-6,1e4,L,L');
+            U=pcg(A,bb,1e-8,500,L,L');
 
             p=Function(sp.Q);
             p.fromFreeDof(P);
